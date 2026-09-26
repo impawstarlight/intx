@@ -1,12 +1,14 @@
 "use strict";
 
 const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
 
 let pmuBinding = null;
 
 function loadPmu() {
 	if (pmuBinding) return pmuBinding;
 
+	let rebuild = "";
 	try {
 		pmuBinding = require("./build/Release/pmu.node");
 	} catch {
@@ -17,6 +19,10 @@ function loadPmu() {
 			});
 			if (res.status === 0) {
 				pmuBinding = require("./build/Release/pmu.node");
+			} else if (res.error?.code === "ENOENT") {
+				rebuild = " (automatic rebuild skipped: node-gyp is not on PATH)";
+			} else {
+				rebuild = ` (automatic 'node-gyp rebuild' exited with ${res.status})`;
 			}
 		} catch {
 			// build failed
@@ -25,14 +31,26 @@ function loadPmu() {
 
 	if (!pmuBinding) {
 		throw new Error(
-			"bench.cycles requires the native PMU addon to be built. Run 'npm run build:native'.",
+			`bench.cycles requires the native PMU addon to be built${rebuild}. Run 'npm run build:native'.`,
 		);
 	}
 
 	if (!pmuBinding.isSupported()) {
+		let paranoid = null;
+		try {
+			paranoid = Number(
+				fs.readFileSync("/proc/sys/kernel/perf_event_paranoid", "utf8"),
+			);
+		} catch {
+			// not Linux, or /proc unreadable
+		}
+		const cause =
+			paranoid !== null && paranoid <= 2
+				? `perf_event_paranoid is ${paranoid}, so that sysctl is not the cause. Most likely this machine exposes no hardware PMU (common in VMs and containers; check for /sys/bus/event_source/devices/cpu), or a container seccomp policy blocks perf_event_open.`
+				: "Either the kernel forbids it (/proc/sys/kernel/perf_event_paranoid must be <= 2) or this machine exposes no hardware PMU.";
 		throw new Error(
-			"bench.cycles requires Linux PMU hardware counter support (/proc/sys/kernel/perf_event_paranoid <= 2). " +
-				"For portable time-domain benchmarking across all platforms, use bench() or bench.suite().",
+			`bench.cycles could not open a hardware cycle counter. ${cause} ` +
+				"For wall-clock timing, use bench() or bench.suite().",
 		);
 	}
 

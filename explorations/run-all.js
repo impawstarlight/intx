@@ -13,6 +13,7 @@ const experiments = [
 	"07-loop-overhead-isolation.js",
 	"08-megamorphic-out-param.js",
 	"09-mulwide-signed-vs-unsigned.js",
+	"10-stride-offset-optimization.js",
 ];
 
 console.log("===============================================================");
